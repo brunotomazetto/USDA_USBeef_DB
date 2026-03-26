@@ -1,0 +1,46 @@
+name: Daily USDA beef cutout update
+
+on:
+  schedule:
+    # 21h30 UTC = 16h30 EST = 30 min após o relatório PM do USDA (15h EST)
+    # Roda seg–sex. Fins de semana não têm relatório — o script encerra sozinho.
+    - cron: "30 21 * * 1-5"
+
+  # Permite rodar manualmente pela aba Actions do GitHub (útil para testar)
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # necessário para git push no repositório
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Executar script de atualização
+        env:
+          USDA_API_KEY: ${{ secrets.USDA_API_KEY }}
+        run: python scripts/update_beef.py
+
+      - name: Commit e push (somente se o CSV foi alterado)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/beef_cutout.csv
+          # Só faz commit se houver mudança real no arquivo
+          git diff --cached --quiet && echo "Sem mudanças para commitar." || (
+            git commit -m "data: USDA update $(date -u +%Y-%m-%d)" &&
+            git push
+          )
